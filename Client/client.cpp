@@ -1,8 +1,24 @@
 #include <windows.networking.sockets.h>
 #pragma comment(lib, "Ws2_32.lib")
 #include <iostream>
+#include <sstream>
+#include <vector>
 
 using namespace std;
+
+// split a comma-delimited string
+vector<string> splitLine(string line){
+	char delimiter = ','; // should always be a comma in the files
+	stringstream stream(line);
+	string token;
+	vector<string> result;
+
+	while(getline(stream, token, delimiter)){
+		result.push_back(token);
+	}
+
+	return result;
+}
 
 int main(int argc, char argv[]) {
 	WSADATA wsaData;
@@ -31,6 +47,13 @@ int main(int argc, char argv[]) {
 	sendto(ClientSocket, TxBuffer, sizeof(TxBuffer), 0,
 		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
 	cout << "Sent: " << TxBuffer << endl;
+
+	// split line test
+	string line = "FUEL TOTAL QUANTITY,D_M_YYYY HH:MM:SS,00.000000,";
+	vector<string> result = splitLine(line);
+	for (string word : result) {
+		cout << "Word: " << word << endl;
+	}
 
 	// open file
 	// read and process lines into data
