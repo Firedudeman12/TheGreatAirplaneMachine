@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="ProjectVI_AirplaneMachine/ProjectVI_AirplaneMachine.vcxproj" Id="d3aa858c-4a74-4291-9593-430e97992f19" />
+</Solution>
