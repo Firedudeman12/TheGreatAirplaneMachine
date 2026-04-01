@@ -1,6 +1,5 @@
 #include <windows.networking.sockets.h>
 #pragma comment(lib, "Ws2_32.lib")
-#include <stdio.h>
 #include <iostream>
 
 using namespace std;
@@ -28,7 +27,7 @@ int main(int argc, char argv[]) {
 	SvrAddr.sin_port = htons(27000);
 
 	// temp send test
-	char TxBuffer[128] = {'1', '2', '3'};
+	char TxBuffer[128] = { '1', '2', '3' };
 	sendto(ClientSocket, TxBuffer, sizeof(TxBuffer), 0,
 		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
 	cout << "Sent: " << TxBuffer << endl;

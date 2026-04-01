@@ -3,6 +3,6 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="ProjectVI_AirplaneMachine/ProjectVI_AirplaneMachine.vcxproj" Id="d3aa858c-4a74-4291-9593-430e97992f19" />
+  <Project Path="Client/Client.vcxproj" Id="24600b73-9638-4ac7-88bb-6b63eda47a43" />
   <Project Path="Server/Server.vcxproj" Id="d3ca5aed-8b9b-46e1-a17f-1df36def74b4" />
 </Solution>
