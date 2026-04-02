@@ -10,7 +10,7 @@ using namespace std;
 // format for telemetry data extracted from a file
 struct TelemData {
 	string time;
-	double fuel;
+	double fuel = 0.0;
 };
 
 // remove leading and trailing whitespaces, if any
