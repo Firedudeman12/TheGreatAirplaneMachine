@@ -94,6 +94,8 @@ bool createTelemData(vector<string> input, TelemData &output) {
 	return true;
 }
 
+
+
 int main(int argc, char argv[]) {
 	WSADATA wsaData;
 	SOCKET ClientSocket;
@@ -110,10 +112,14 @@ int main(int argc, char argv[]) {
 		return -1;
 	}
 
+	string enteredip;
+	std::cout << "Enter the Host Server IP to begin: ";
+	std::cin >> enteredip;
+
 	// set up sever address info
 	// TODO: make address (and port?) configurable
 	SvrAddr.sin_family = AF_INET;
-	SvrAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	SvrAddr.sin_addr.s_addr = inet_addr(enteredip.c_str());
 	SvrAddr.sin_port = htons(27000);
 
 	// temp send test
