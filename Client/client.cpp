@@ -149,6 +149,11 @@ int main(int argc, char argv[]) {
 		return -1;
 	}
 
+	// read in file and send packets until done
+	string filename;
+	std::cout << "Enter the File path: ";
+	std::cin >> filename;
+
 	string enteredip;
 	std::cout << "Enter the Host Server IP to begin: ";
 	std::cin >> enteredip;
@@ -159,12 +164,8 @@ int main(int argc, char argv[]) {
 	SvrAddr.sin_addr.s_addr = inet_addr(enteredip.c_str());
 	SvrAddr.sin_port = htons(27000);
 
-	// read in file and send packets until done
-	string filename;
-	std::cout << "Enter the File path: ";
-	std::cin >> filename;
 	string line;
-	ifstream file(filename.c_str());
+	ifstream file(filename);
 
 	while (getline(file, line)) {
 		vector<string> split = splitLine(line);
