@@ -1,4 +1,6 @@
 // server.cpp
+
+
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "Ws2_32.lib")
@@ -16,12 +18,16 @@
 
 using namespace std;
 
-
-static const int    SERVER_PORT = 27000;
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+static const int    DEFAULT_PORT = 27000;
 static const int    BUFFER_SIZE = 128;
 static const int    MAX_BACKLOG = 64;   // max queued datagrams (advisory)
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Data structures
+// ─────────────────────────────────────────────────────────────────────────────
 
 // One telemetry sample received from a client
 struct TelemData {
@@ -51,7 +57,9 @@ struct Packet {
     sockaddr_in senderAddr;
 };
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Global shared state  (protected by g_lock)
+// ─────────────────────────────────────────────────────────────────────────────
 static CRITICAL_SECTION g_lock;
 
 // Active flights keyed by planeID
@@ -60,7 +68,9 @@ static unordered_map<string, FlightSession> g_activeSessions;
 // All-time records keyed by planeID
 static unordered_map<string, PlaneRecord> g_planeRecords;
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Wall-clock timestamp for log messages
 static string nowString() {
@@ -127,7 +137,9 @@ static double calcAverageConsumption(const FlightSession& session) {
     return (count > 0) ? (total / count) : 0.0;
 }
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Packet processing  (called from each worker thread)
+// ─────────────────────────────────────────────────────────────────────────────
 
 static void processPacket(const Packet& pkt) {
     // Null-terminate and convert buffer to string
@@ -185,6 +197,14 @@ static void processPacket(const Packet& pkt) {
             return;
         }
 
+        // We need to know which plane sent this.
+        // The planeID is looked up by matching the sender's IP:port.
+        // Since UDP is connectionless we match by the last CON sender address.
+        // For simplicity here we search active sessions for a plane whose
+        // most-recent sample matches — but the cleanest approach is to embed
+        // planeID in every packet.  We therefore expect "DAT:<planeID>,<ts>,<fuel>".
+
+        // Re-parse with planeID as first field: "planeID,timestamp,fuel"
         {
             stringstream ss2(body);
             string tok;
@@ -192,7 +212,8 @@ static void processPacket(const Packet& pkt) {
             while (getline(ss2, tok, ','))
                 parts.push_back(trim(tok));
 
-            
+            // If 3+ fields: parts[0]=planeID, parts[1]=time, parts[2]=fuel
+            // If 2 fields:  assume legacy format without planeID (log a warning)
             if (parts.size() >= 3) {
                 string planeID = parts[0];
                 string tsPart = parts[1];
@@ -279,7 +300,9 @@ static void processPacket(const Packet& pkt) {
         << "' — raw: " << raw << "\n";
 }
 
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Worker thread  (one per received packet — thread-per-connection model)
+// ─────────────────────────────────────────────────────────────────────────────
 
 static DWORD WINAPI workerThread(LPVOID param) {
     Packet* pkt = reinterpret_cast<Packet*>(param);
@@ -288,9 +311,23 @@ static DWORD WINAPI workerThread(LPVOID param) {
     return 0;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// main
+// ─────────────────────────────────────────────────────────────────────────────
 
+int main(int argc, char* argv[]) {
 
-int main() {
+    // ── Argument parsing ──────────────────────────────────────────────────────
+    int listenPort = DEFAULT_PORT;
+    if (argc >= 2) {
+        listenPort = atoi(argv[1]);
+        if (listenPort <= 0 || listenPort > 65535) {
+            cerr << "Usage: " << argv[0] << " [port]\n"
+                << "  port must be 1-65535 (default " << DEFAULT_PORT << ")\n";
+            return -1;
+        }
+    }
+
     // Initialise Winsock
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -306,11 +343,12 @@ int main() {
         return -1;
     }
 
-    // Bind to all interfaces on SERVER_PORT
+    // Bind to all interfaces on listenPort (INADDR_ANY lets clients on any
+    // network adapter reach the server — no IP is hardcoded here)
     sockaddr_in bindAddr{};
     bindAddr.sin_family = AF_INET;
     bindAddr.sin_addr.s_addr = INADDR_ANY;
-    bindAddr.sin_port = htons(SERVER_PORT);
+    bindAddr.sin_port = htons(static_cast<u_short>(listenPort));
 
     if (bind(serverSock, reinterpret_cast<sockaddr*>(&bindAddr), sizeof(bindAddr)) == SOCKET_ERROR) {
         cerr << "ERROR: bind() failed: " << WSAGetLastError() << "\n";
@@ -323,9 +361,9 @@ int main() {
     InitializeCriticalSection(&g_lock);
 
     cout << "[" << nowString() << "] Telemetry server listening on UDP port "
-        << SERVER_PORT << "\n";
+        << listenPort << " (all interfaces)\n";
 
-    // Main receive loop 
+    // ── Main receive loop ──────────────────────────────────────────────────────
     while (true) {
         Packet* pkt = new Packet{};
         int addrLen = sizeof(pkt->senderAddr);
