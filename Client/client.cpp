@@ -6,6 +6,7 @@
 #include <vector>
 #include <regex>
 #include <string.h>
+#include <fstream>
 
 using namespace std;
 
@@ -154,46 +155,31 @@ int main(int argc, char argv[]) {
 	SvrAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 	SvrAddr.sin_port = htons(27000);
 
-	// split line & create data test
-	string line1 = "FUEL TOTAL QUANTITY,1_1_2000 01:01:01,20.050000, ";
-	string line2 = " 12_10_2025 10:23:42,11.203000, ";
+	// read in file and send packets until done
+	string filename = "test.txt"; // change later obviously
+	string line;
+	ifstream file(filename);
 
-	vector<string> vec1 = splitLine(line1);
-	vector<string> vec2 = splitLine(line2);
+	while (getline(file, line)) {
+		vector<string> split = splitLine(line);
+		TelemData data;
 
-	TelemData data1;
-	TelemData data2;
+		if (createTelemData(split, data)) {
+			cout << "Data:" << endl;
+			cout << "Time: " << data.time << " Fuel: " << data.fuel << endl;
+		}
 
-	if (createTelemData(vec1, data1)) {
-		cout << "Data 1:" << endl;
-		cout << "Time: " << data1.time << " Fuel: " << data1.fuel << endl;
+		TelemPacket packet = createPacket(data);
+
+		char buf[PACKET_SIZE];
+		serializePacket(packet, buf);
+
+		sendto(ClientSocket, buf, sizeof(buf), 0,
+			(sockaddr*)&SvrAddr, sizeof(SvrAddr));
+		cout << "Sent: " << buf << endl;
 	}
-	if (createTelemData(vec2, data2)) {
-		cout << "Data 2:" << endl;
-		cout << "Time: " << data2.time << " Fuel: " << data2.fuel << endl;
-	}
 
-	// create and send packet test
-	TelemPacket packet1 = createPacket(data1);
-	TelemPacket packet2 = createPacket(data2);
-
-	char buf[PACKET_SIZE];
-	serializePacket(packet1, buf);
-
-	sendto(ClientSocket, buf, sizeof(buf), 0,
-		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
-	cout << "Sent: " << buf << endl;
-
-	serializePacket(packet2, buf);
-
-	sendto(ClientSocket, buf, sizeof(buf), 0,
-		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
-	cout << "Sent: " << buf << endl;
-
-	// open file
-	// read and process lines into data
-	// send data packets to server until empty
-	// send EOF packet
+	file.close();
 
 	// cleanup
 	closesocket(ClientSocket);
