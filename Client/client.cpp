@@ -10,7 +10,14 @@
 
 using namespace std;
 
-const int PACKET_SIZE = 128; // probably change this later
+const int PACKET_SIZE = 128;
+const int PLANE_ID = 0; // change later
+
+enum PacketType {
+	TELEM,
+	END,
+	INVALID
+};
 
 // format for telemetry data extracted from a file
 struct TelemData {
@@ -23,12 +30,7 @@ struct TelemPacket {
 	int planeID = 0;
 	string timestamp;
 	double fuel = 0.0;
-};
-
-enum PacketType {
-	TELEM,
-	END,
-	INVALID
+	PacketType type = INVALID;
 };
 
 // remove leading and trailing whitespaces, if any
@@ -116,9 +118,15 @@ bool createTelemData(vector<string> input, TelemData &output) {
 TelemPacket createPacket(TelemData input){
 	TelemPacket packet;
 
-	packet.planeID = 0; // change this later
+	packet.planeID = PLANE_ID;
 	packet.fuel = input.fuel;
 	packet.timestamp = input.time;
+	if (packet.fuel == -1) {
+		packet.type = END;
+	}
+	else {
+		packet.type = TELEM;
+	}
 
 	return packet;
 }
@@ -126,10 +134,22 @@ TelemPacket createPacket(TelemData input){
 // Pack together telemetry data into a sendable format
 void serializePacket(TelemPacket input, char output[PACKET_SIZE]) {
 	string packetStr;
-	packetStr = "DAT:";
-	packetStr += to_string(input.planeID) + ",";
-	packetStr += input.timestamp + ",";
-	packetStr += to_string(input.fuel);
+
+	switch (input.type) {
+	case TELEM:
+		packetStr = "DAT:";
+		packetStr += to_string(input.planeID) + ",";
+		packetStr += input.timestamp + ",";
+		packetStr += to_string(input.fuel);
+		break;
+	case END:
+		packetStr = "EOF:";
+		packetStr += to_string(input.planeID);
+		break;
+	default:
+		packetStr = "BAD:";
+		break;
+	}
 
 	strcpy(output, packetStr.c_str());
 }
@@ -153,7 +173,7 @@ int main(int argc, char argv[]) {
 	// read in file and send packets until done
 	string filename;
 	std::cout << "Enter the File path: ";
-	std::cin >> filename;
+	getline(std::cin, filename);
 
 	string enteredip;
 	std::cout << "Enter the Host Server IP to begin: ";
@@ -186,8 +206,21 @@ int main(int argc, char argv[]) {
 			(sockaddr*)&SvrAddr, sizeof(SvrAddr));
 		cout << "Sent: " << buf << endl;
 	}
-
 	file.close();
+
+	// create and send EOF packet
+	TelemPacket endPkt;
+	endPkt.fuel = -1;
+	endPkt.timestamp = "";
+	endPkt.planeID = PLANE_ID;
+	endPkt.type = END;
+
+	char endBuf[PACKET_SIZE];
+	serializePacket(endPkt, endBuf);
+
+	sendto(ClientSocket, endBuf, sizeof(endBuf), 0,
+		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
+	cout << "Sent: " << endBuf << endl;
 
 	// cleanup
 	closesocket(ClientSocket);
