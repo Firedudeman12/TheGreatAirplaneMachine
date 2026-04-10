@@ -160,9 +160,11 @@ int main(int argc, char argv[]) {
 	SvrAddr.sin_port = htons(27000);
 
 	// read in file and send packets until done
-	string filename = "test.txt"; // change later obviously
+	string filename;
+	std::cout << "Enter the File path: ";
+	std::cin >> filename;
 	string line;
-	ifstream file(filename);
+	ifstream file(filename.c_str());
 
 	while (getline(file, line)) {
 		vector<string> split = splitLine(line);
