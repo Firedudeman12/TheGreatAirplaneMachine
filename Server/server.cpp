@@ -105,19 +105,19 @@ static bool isValidDouble(const string& input) {
 
 // Parse "DAT:" payload → TelemData.  Returns false on bad format.
 static bool parseTelemData(const string& payload, TelemData& out) {
-    // payload = "timestamp,fuel[,optional trailing fields]"
+    // payload = "id,timestamp,fuel[,optional trailing fields]"
     stringstream ss(payload);
     string token;
     vector<string> parts;
     while (getline(ss, token, ','))
         parts.push_back(trim(token));
 
-    if (parts.size() < 2) return false;
-    if (!isValidTime(parts[0])) return false;
-    if (!isValidDouble(parts[1])) return false;
+    if (parts.size() < 3) return false;
+    if (!isValidTime(parts[1])) return false;
+    if (!isValidDouble(parts[2])) return false;
 
-    out.time = parts[0];
-    out.fuel = stod(parts[1]);
+    out.time = parts[1];
+    out.fuel = stod(parts[2]);
     return true;
 }
 

@@ -126,9 +126,10 @@ TelemPacket createPacket(TelemData input){
 // Pack together telemetry data into a sendable format
 void serializePacket(TelemPacket input, char output[PACKET_SIZE]) {
 	string packetStr;
-	packetStr = to_string(input.planeID) + ",";
-	packetStr += to_string(input.fuel) + ",";
-	packetStr += input.timestamp;
+	packetStr = "DAT:";
+	packetStr += to_string(input.planeID) + ",";
+	packetStr += input.timestamp + ",";
+	packetStr += to_string(input.fuel);
 
 	strcpy(output, packetStr.c_str());
 }
