@@ -1,16 +1,33 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <windows.networking.sockets.h>
 #pragma comment(lib, "Ws2_32.lib")
 #include <iostream>
 #include <sstream>
 #include <vector>
 #include <regex>
+#include <string.h>
 
 using namespace std;
+
+const int PACKET_SIZE = 128; // probably change this later
 
 // format for telemetry data extracted from a file
 struct TelemData {
 	string time;
 	double fuel = 0.0;
+};
+
+// format for telemetry packet
+struct TelemPacket {
+	int planeID = 0;
+	string timestamp;
+	double fuel = 0.0;
+};
+
+enum PacketType {
+	TELEM,
+	END,
+	INVALID
 };
 
 // remove leading and trailing whitespaces, if any
@@ -94,7 +111,26 @@ bool createTelemData(vector<string> input, TelemData &output) {
 	return true;
 }
 
+// convert telemetry data into a packet format
+TelemPacket createPacket(TelemData input){
+	TelemPacket packet;
 
+	packet.planeID = 0; // change this later
+	packet.fuel = input.fuel;
+	packet.timestamp = input.time;
+
+	return packet;
+}
+
+// Pack together telemetry data into a sendable format
+void serializePacket(TelemPacket input, char output[PACKET_SIZE]) {
+	string packetStr;
+	packetStr = to_string(input.planeID) + ",";
+	packetStr += to_string(input.fuel) + ",";
+	packetStr += input.timestamp;
+
+	strcpy(output, packetStr.c_str());
+}
 
 int main(int argc, char argv[]) {
 	WSADATA wsaData;
@@ -122,12 +158,6 @@ int main(int argc, char argv[]) {
 	SvrAddr.sin_addr.s_addr = inet_addr(enteredip.c_str());
 	SvrAddr.sin_port = htons(27000);
 
-	// temp send test
-	char TxBuffer[128] = { '1', '2', '3' };
-	sendto(ClientSocket, TxBuffer, sizeof(TxBuffer), 0,
-		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
-	cout << "Sent: " << TxBuffer << endl;
-
 	// split line & create data test
 	string line1 = "FUEL TOTAL QUANTITY,1_1_2000 01:01:01,20.050000, ";
 	string line2 = " 12_10_2025 10:23:42,11.203000, ";
@@ -146,6 +176,23 @@ int main(int argc, char argv[]) {
 		cout << "Data 2:" << endl;
 		cout << "Time: " << data2.time << " Fuel: " << data2.fuel << endl;
 	}
+
+	// create and send packet test
+	TelemPacket packet1 = createPacket(data1);
+	TelemPacket packet2 = createPacket(data2);
+
+	char buf[PACKET_SIZE];
+	serializePacket(packet1, buf);
+
+	sendto(ClientSocket, buf, sizeof(buf), 0,
+		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
+	cout << "Sent: " << buf << endl;
+
+	serializePacket(packet2, buf);
+
+	sendto(ClientSocket, buf, sizeof(buf), 0,
+		(sockaddr*)&SvrAddr, sizeof(SvrAddr));
+	cout << "Sent: " << buf << endl;
 
 	// open file
 	// read and process lines into data
