@@ -8,11 +8,11 @@
 #include <string.h>
 #include <fstream>
 #include <Windows.h>
+#include <ctime>
 
 using namespace std;
 
 const int PACKET_SIZE = 128;
-const int PLANE_ID = 0; // change later
 
 enum PacketType {
 	TELEM,
@@ -116,10 +116,10 @@ bool createTelemData(vector<string> input, TelemData &output) {
 }
 
 // convert telemetry data into a packet format
-TelemPacket createPacket(TelemData input){
+TelemPacket createPacket(TelemData input, int planeID){
 	TelemPacket packet;
 
-	packet.planeID = PLANE_ID;
+	packet.planeID = planeID;
 	packet.fuel = input.fuel;
 	packet.timestamp = input.time;
 	if (packet.fuel == -1) {
@@ -156,6 +156,10 @@ void serializePacket(TelemPacket input, char output[PACKET_SIZE]) {
 }
 
 int main(int argc, char argv[]) {
+	// generate random plane ID (hopefully no duplicates?)
+	srand(time(0));
+	int planeID = rand();
+
 	WSADATA wsaData;
 	SOCKET ClientSocket;
 	sockaddr_in SvrAddr;
@@ -198,7 +202,7 @@ int main(int argc, char argv[]) {
 			cout << "Time: " << data.time << " Fuel: " << data.fuel << endl;
 		}
 
-		TelemPacket packet = createPacket(data);
+		TelemPacket packet = createPacket(data, planeID);
 
 		char buf[PACKET_SIZE];
 		serializePacket(packet, buf);
@@ -214,7 +218,7 @@ int main(int argc, char argv[]) {
 	TelemPacket endPkt;
 	endPkt.fuel = -1;
 	endPkt.timestamp = "";
-	endPkt.planeID = PLANE_ID;
+	endPkt.planeID = planeID;
 	endPkt.type = END;
 
 	char endBuf[PACKET_SIZE];
