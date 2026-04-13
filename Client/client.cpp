@@ -7,6 +7,7 @@
 #include <regex>
 #include <string.h>
 #include <fstream>
+#include <Windows.h>
 
 using namespace std;
 
@@ -61,7 +62,7 @@ vector<string> splitLine(string line){
 // validate a string matches time format (D_M_YYYY HH:MM:SS)
 bool isValidTime(string input) {
 	regex timestamp(
-		R"(^([1-9]|[12][0-9]|3[01])_([1-9]|1[0-2])_(\d{4}) ([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$)"
+		R"(^([1-9]|[12][0-9]|3[01])_([1-9]|1[0-2])_(\d{4}) ([01][0-9]|2[0-3]):([0-5][0-9]|[0-9]):([0-5][0-9]|[0-9])$)"
 	);
 	return regex_match(input, timestamp);
 }
@@ -205,6 +206,7 @@ int main(int argc, char argv[]) {
 		sendto(ClientSocket, buf, sizeof(buf), 0,
 			(sockaddr*)&SvrAddr, sizeof(SvrAddr));
 		cout << "Sent: " << buf << endl;
+		Sleep(1000);
 	}
 	file.close();
 
