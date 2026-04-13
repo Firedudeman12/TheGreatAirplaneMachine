@@ -155,7 +155,7 @@ void serializePacket(TelemPacket input, char output[PACKET_SIZE]) {
 	strcpy(output, packetStr.c_str());
 }
 
-int main(int argc, char argv[]) {
+int main(int argc, char *argv[]) {
 	// generate random plane ID (hopefully no duplicates?)
 	srand(time(0));
 	int planeID = rand();
@@ -175,19 +175,26 @@ int main(int argc, char argv[]) {
 		return -1;
 	}
 
-	// read in file and send packets until done
-	string filename;
+	// get file name and server IP from command args
+	if (argc != 3){
+		cerr << "ERROR: Invalid no. of arguments" << endl;
+		return -1;
+	}
+	string filename = argv[1];
+	string serverIP = argv[2];
+
+	/* string filename;
 	std::cout << "Enter the File path: ";
 	getline(std::cin, filename);
 
-	string enteredip;
+	string serverIP;
 	std::cout << "Enter the Host Server IP to begin: ";
-	std::cin >> enteredip;
+	std::cin >> serverIP;
+	*/
 
 	// set up sever address info
-	// TODO: make address (and port?) configurable
 	SvrAddr.sin_family = AF_INET;
-	SvrAddr.sin_addr.s_addr = inet_addr(enteredip.c_str());
+	SvrAddr.sin_addr.s_addr = inet_addr(serverIP.c_str());
 	SvrAddr.sin_port = htons(27000);
 
 	string line;
