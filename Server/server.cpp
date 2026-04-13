@@ -92,7 +92,7 @@ static string trim(const string& s) {
 // Validate timestamp: D_M_YYYY HH:MM:SS  (matches client regex exactly)
 static bool isValidTime(const string& input) {
     static const regex ts(
-        R"(^([1-9]|[12][0-9]|3[01])_([1-9]|1[0-2])_(\d{4}) ([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])$)"
+        R"(^([1-9]|[12][0-9]|3[01])_([1-9]|1[0-2])_(\d{4}) ([01][0-9]|2[0-3]):([0-5][0-9]|[0-9]):([0-5][0-9]|[0-9])$)"
     );
     return regex_match(input, ts);
 }
