@@ -390,7 +390,6 @@ int main(int argc, char* argv[]) {
     }
 
     // Initialise critical section for shared-state protection
-    InitializeCriticalSection(&g_lock);
     InitializeCriticalSection(&g_poolLock);
 
     cout << "[" << nowString() << "] Telemetry server listening on UDP port "
@@ -438,8 +437,6 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // Cleanup (unreachable in this design; add a signal handler for graceful shutdown)
-    DeleteCriticalSection(&g_lock);
     // cleanup packet pool
     EnterCriticalSection(&g_poolLock);
     for (Packet* p : g_packetPool) delete p;
