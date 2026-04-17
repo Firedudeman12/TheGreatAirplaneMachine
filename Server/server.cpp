@@ -23,7 +23,8 @@ using namespace std;
 // ─────────────────────────────────────────────────────────────────────────────
 static const int    DEFAULT_PORT = 27000;
 static const int    BUFFER_SIZE = 128;
-static const int    MAX_BACKLOG = 64;   // max queued datagrams (advisory)
+static const int    MAX_BACKLOG    = 64;   // max queued datagrams (advisory)
+static const int    MAX_THREADS    = 32;   // cap concurrent worker threads
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data structures
@@ -47,7 +48,8 @@ struct FlightSession {
 // Persistent record kept across multiple flights for a plane
 struct PlaneRecord {
     string planeID;
-    vector<double> flightAverages;  // one entry per completed flight
+    double runningAvg  = 0.0;  // incremental average - avoids unbounded vector growth
+    int    flightCount = 0;
 };
 
 // Packet passed from the receiver thread to a worker thread
@@ -61,6 +63,7 @@ struct Packet {
 // Global shared state  (protected by g_lock)
 // ─────────────────────────────────────────────────────────────────────────────
 static CRITICAL_SECTION g_lock;
+static HANDLE           g_threadSem = nullptr;  // limits concurrent worker threads
 
 // Active flights keyed by planeID
 static unordered_map<string, FlightSession> g_activeSessions;
@@ -168,7 +171,7 @@ static void processPacket(const Packet& pkt) {
 
         if (g_activeSessions.count(planeID)) {
             cout << "[" << nowString() << "] INFO: CON from already-active plane "
-                << planeID << " — resetting session\n";
+                << planeID << " - resetting session\n";
             g_activeSessions.erase(planeID);
         }
 
@@ -201,7 +204,7 @@ static void processPacket(const Packet& pkt) {
         // The planeID is looked up by matching the sender's IP:port.
         // Since UDP is connectionless we match by the last CON sender address.
         // For simplicity here we search active sessions for a plane whose
-        // most-recent sample matches — but the cleanest approach is to embed
+        // most-recent sample matches - but the cleanest approach is to embed
         // planeID in every packet.  We therefore expect "DAT:<planeID>,<ts>,<fuel>".
 
         // Re-parse with planeID as first field: "planeID,timestamp,fuel"
@@ -239,7 +242,12 @@ static void processPacket(const Packet& pkt) {
                     cout << "[" << nowString() << "] INFO: auto-created session for " << planeID << "\n";
                 }
 
-                g_activeSessions[planeID].samples.push_back(td);
+                auto& samplesVec = g_activeSessions[planeID].samples;
+                samplesVec.push_back(td);
+                // Keep only the last 2 samples - that's all calcAverageConsumption needs
+                // per interval; older entries just accumulate memory.
+                if (samplesVec.size() > 2)
+                    samplesVec.erase(samplesVec.begin());
                 size_t nSamples = g_activeSessions[planeID].samples.size();
 
                 LeaveCriticalSection(&g_lock);
@@ -250,8 +258,8 @@ static void processPacket(const Packet& pkt) {
                     << " (#" << nSamples << ")\n";
             }
             else {
-                // Legacy 2-field DAT (no planeID) — log and skip
-                cerr << "[" << nowString() << "] WARN: DAT packet missing planeID field — ignored\n";
+                // Legacy 2-field DAT (no planeID) - log and skip
+                cerr << "[" << nowString() << "] WARN: DAT packet missing planeID field - ignored\n";
             }
         }
         return;
@@ -277,13 +285,12 @@ static void processPacket(const Packet& pkt) {
         g_activeSessions.erase(planeID);
 
         double avgConsumption = calcAverageConsumption(session);
-        g_planeRecords[planeID].flightAverages.push_back(avgConsumption);
 
-        // Compute all-time average across all flights
-        const vector<double>& avgs = g_planeRecords[planeID].flightAverages;
-        double allTimeAvg = 0.0;
-        for (double v : avgs) allTimeAvg += v;
-        allTimeAvg /= static_cast<double>(avgs.size());
+        // Incremental running average - no vector needed
+        PlaneRecord& rec = g_planeRecords[planeID];
+        ++rec.flightCount;
+        rec.runningAvg += (avgConsumption - rec.runningAvg) / rec.flightCount;
+        double allTimeAvg = rec.runningAvg;
 
         LeaveCriticalSection(&g_lock);
 
@@ -291,23 +298,24 @@ static void processPacket(const Packet& pkt) {
             << " samples=" << session.samples.size()
             << " flightAvgConsumption=" << fixed << setprecision(6) << avgConsumption
             << " allTimeAvg=" << allTimeAvg
-            << " (over " << avgs.size() << " flight(s))\n";
+            << " (over " << rec.flightCount << " flight(s))\n";
         return;
     }
 
     // ── Unknown prefix ────────────────────────────────────────────────────────
     cerr << "[" << nowString() << "] WARN: unknown packet prefix '" << prefix
-        << "' — raw: " << raw << "\n";
+        << "' - raw: " << raw << "\n";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Worker thread  (one per received packet — thread-per-connection model)
+// Worker thread  (one per received packet - thread-per-connection model)
 // ─────────────────────────────────────────────────────────────────────────────
 
 static DWORD WINAPI workerThread(LPVOID param) {
     Packet* pkt = reinterpret_cast<Packet*>(param);
     processPacket(*pkt);
     delete pkt;
+    ReleaseSemaphore(g_threadSem, 1, nullptr);  // free slot for next thread
     return 0;
 }
 
@@ -344,7 +352,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Bind to all interfaces on listenPort (INADDR_ANY lets clients on any
-    // network adapter reach the server — no IP is hardcoded here)
+    // network adapter reach the server - no IP is hardcoded here)
     sockaddr_in bindAddr{};
     bindAddr.sin_family = AF_INET;
     bindAddr.sin_addr.s_addr = INADDR_ANY;
@@ -359,6 +367,7 @@ int main(int argc, char* argv[]) {
 
     // Initialise critical section for shared-state protection
     InitializeCriticalSection(&g_lock);
+    g_threadSem = CreateSemaphore(nullptr, MAX_THREADS, MAX_THREADS, nullptr);
 
     cout << "[" << nowString() << "] Telemetry server listening on UDP port "
         << listenPort << " (all interfaces)\n";
@@ -383,6 +392,9 @@ int main(int argc, char* argv[]) {
             continue;   // keep running unless shutdown is requested
         }
 
+        // Wait for a free thread slot before spawning (caps concurrent threads)
+        WaitForSingleObject(g_threadSem, INFINITE);
+
         // Dispatch to a new worker thread (SYS-010: parallel thread design)
         HANDLE hThread = CreateThread(
             nullptr,        // default security
@@ -398,9 +410,10 @@ int main(int argc, char* argv[]) {
             // Fall back to inline processing so the packet isn't lost
             processPacket(*pkt);
             delete pkt;
+            ReleaseSemaphore(g_threadSem, 1, nullptr);
         }
         else {
-            // Detach — we don't need to wait on individual worker threads
+            // Detach - we don't need to wait on individual worker threads
             CloseHandle(hThread);
         }
     }
