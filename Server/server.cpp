@@ -62,6 +62,37 @@ struct Packet {
 // ─────────────────────────────────────────────────────────────────────────────
 static CRITICAL_SECTION g_lock;
 
+// Packet pool to avoid per-packet new/delete churn
+static CRITICAL_SECTION g_poolLock;
+static std::vector<Packet*> g_packetPool;
+
+static Packet* allocatePacket()
+{
+    Packet* p = nullptr;
+    EnterCriticalSection(&g_poolLock);
+    if (!g_packetPool.empty()) {
+        p = g_packetPool.back();
+        g_packetPool.pop_back();
+    }
+    LeaveCriticalSection(&g_poolLock);
+    if (!p) p = new Packet{};
+    // clear contents before use
+    p->len = 0;
+    memset(p->buf, 0, sizeof(p->buf));
+    memset(&p->senderAddr, 0, sizeof(p->senderAddr));
+    return p;
+}
+
+static void freePacket(Packet* p)
+{
+    if (!p) return;
+    // reset length to avoid stale data
+    p->len = 0;
+    EnterCriticalSection(&g_poolLock);
+    g_packetPool.push_back(p);
+    LeaveCriticalSection(&g_poolLock);
+}
+
 // Active flights keyed by planeID
 static unordered_map<string, FlightSession> g_activeSessions;
 
@@ -307,7 +338,8 @@ static void processPacket(const Packet& pkt) {
 static DWORD WINAPI workerThread(LPVOID param) {
     Packet* pkt = reinterpret_cast<Packet*>(param);
     processPacket(*pkt);
-    delete pkt;
+    // return packet to pool instead of deleting
+    freePacket(pkt);
     return 0;
 }
 
@@ -359,13 +391,14 @@ int main(int argc, char* argv[]) {
 
     // Initialise critical section for shared-state protection
     InitializeCriticalSection(&g_lock);
+    InitializeCriticalSection(&g_poolLock);
 
     cout << "[" << nowString() << "] Telemetry server listening on UDP port "
         << listenPort << " (all interfaces)\n";
 
     // ── Main receive loop ──────────────────────────────────────────────────────
     while (true) {
-        Packet* pkt = new Packet{};
+        Packet* pkt = allocatePacket();
         int addrLen = sizeof(pkt->senderAddr);
 
         pkt->len = recvfrom(
@@ -379,7 +412,7 @@ int main(int argc, char* argv[]) {
 
         if (pkt->len == SOCKET_ERROR) {
             cerr << "ERROR: recvfrom() failed: " << WSAGetLastError() << "\n";
-            delete pkt;
+            freePacket(pkt);
             continue;   // keep running unless shutdown is requested
         }
 
@@ -397,7 +430,7 @@ int main(int argc, char* argv[]) {
             cerr << "ERROR: CreateThread failed: " << GetLastError() << "\n";
             // Fall back to inline processing so the packet isn't lost
             processPacket(*pkt);
-            delete pkt;
+            freePacket(pkt);
         }
         else {
             // Detach — we don't need to wait on individual worker threads
@@ -407,6 +440,12 @@ int main(int argc, char* argv[]) {
 
     // Cleanup (unreachable in this design; add a signal handler for graceful shutdown)
     DeleteCriticalSection(&g_lock);
+    // cleanup packet pool
+    EnterCriticalSection(&g_poolLock);
+    for (Packet* p : g_packetPool) delete p;
+    g_packetPool.clear();
+    LeaveCriticalSection(&g_poolLock);
+    DeleteCriticalSection(&g_poolLock);
     closesocket(serverSock);
     WSACleanup();
     return 0;

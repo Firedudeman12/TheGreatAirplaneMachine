@@ -19,4 +19,7 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\x64\Release\LoadTest_1.diagsession" />
+  </ItemGroup>
 </Project>
